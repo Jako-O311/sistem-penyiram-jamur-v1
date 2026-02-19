@@ -31,12 +31,31 @@ LiquidCrystal_I2C lcd(0x27, 16, 2); //lcd i2c 16x2
 TM1637Display tm(CLK_tm1637, DIO_tm1637); //display digit jam
 #define relay_pin_1 25
 #define relay_pin_2 26
+#define clk_pin_encoder 32 //pin CLK rotary encoder
+#define dt_pin_encoder 33 //pin DT rotary encoder
 #define button_pin_set_waktu 34 //pin untuk set waktu siram
 #define button_pin_onoff_otomatis 35 //on/off siram otomatis
 #define button_pin_siram_manual 27 //pin siram manual
 
 // // put function declarations here:
 // int myFunction(int, int);
+
+//tes lagi nanti ----
+// rotary encoder state (updated in ISR)
+volatile int8_t encoderDelta = 0;
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+
+void IRAM_ATTR handleEncoderISR() {
+  int clk = digitalRead(clk_pin_encoder);
+  int dt = digitalRead(dt_pin_encoder);
+  // simple direction detection: when CLK changes, compare DT
+  if (clk == dt) {
+    encoderDelta++;
+  } else {
+    encoderDelta--;
+  }
+}
+//-----
 
 void setup() {
   // put your setup code here, to run once:
@@ -72,6 +91,9 @@ void setup() {
   pinMode(button_pin_onoff_otomatis, INPUT_PULLUP);
   pinMode(button_pin_siram_manual, INPUT_PULLUP);
   //rotary encoder
+  pinMode(clk_pin_encoder, INPUT_PULLUP);
+  pinMode(dt_pin_encoder, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(clk_pin_encoder), handleEncoderISR, CHANGE);
   
 }
 
@@ -141,6 +163,42 @@ void loop() {
     }
   }
   lastSetButtonState = setBtn;
+
+  //tes lagi nanti----
+  // handle rotary encoder adjustments when in set mode
+  if (setMode != MODE_NONE) {
+    int8_t delta = 0;
+    portENTER_CRITICAL(&mux);
+    delta = encoderDelta;
+    encoderDelta = 0;
+    portEXIT_CRITICAL(&mux);
+    if (delta != 0) {
+      // apply delta (can be multiple steps)
+      if (setMode == MODE_H1) {
+        int v = jamSiram_1 + delta;
+        while (v < 0) v += 24;
+        jamSiram_1 = v % 24;
+      } else if (setMode == MODE_M1) {
+        int v = menitSiram_1 + delta;
+        while (v < 0) v += 60;
+        menitSiram_1 = v % 60;
+      } else if (setMode == MODE_H2) {
+        int v = jamSiram_2 + delta;
+        while (v < 0) v += 24;
+        jamSiram_2 = v % 24;
+      } else if (setMode == MODE_M2) {
+        int v = menitSiram_2 + delta;
+        while (v < 0) v += 60;
+        menitSiram_2 = v % 60;
+      } else if (setMode == MODE_DUR) {
+        int v = durasiSiram + delta;
+        if (v < 1) v = 1;
+        if (v > 120) v = 120;
+        durasiSiram = v;
+      }
+    }
+  }
+//--------
 
   // inc button: increment field or toggle auto
   if (incBtn != lastIncButtonState && nowMillis - lastButtonTime > debounce) {
@@ -216,7 +274,7 @@ void loop() {
     else if (setMode == MODE_H2) showH = (blinkOn ? jamSiram_2 : curHour);
     else if (setMode == MODE_M2) showM = (blinkOn ? menitSiram_2 : curMin);
     int number = showH * 100 + showM;
-    uint8_t colon = (blinkOn ? 0x40 : 0x00);
+    uint8_t colon = (blinkOn ? 0x40 : 0x00); //
     tm.showNumberDecEx(number, colon, true, 4, 0);
   }
 
@@ -232,7 +290,7 @@ void loop() {
   lcd.setCursor(9,1);
   lcd.print("D:"); lcd.print(durasiSiram);
 }
-//
+//-------
 
 // // put function definitions here:
 // int myFunction(int x, int y) {
