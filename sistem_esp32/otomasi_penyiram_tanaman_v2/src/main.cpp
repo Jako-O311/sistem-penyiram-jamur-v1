@@ -33,9 +33,10 @@ TM1637Display tm(CLK_tm1637, DIO_tm1637); //display digit jam
 #define relay_pin_2 26
 #define clk_pin_encoder 32 //pin CLK rotary encoder
 #define dt_pin_encoder 33 //pin DT rotary encoder
+#define sw_pin_encoder 27 //pin SW rotary encoder - belum dipakai
 #define button_pin_set_waktu 34 //pin untuk set waktu siram
-#define button_pin_onoff_otomatis 35 //on/off siram otomatis
-#define button_pin_siram_manual 27 //pin siram manual
+#define button_pin_onoff_otomatis 39 //on/off siram otomatis
+#define button_pin_siram_manual 35 //pin siram manual
 
 // // put function declarations here:
 // int myFunction(int, int);
@@ -113,6 +114,7 @@ void loop() {
   static Preferences prefs;
   static bool prefsLoaded = false;
   static bool autoEnabled = true;
+  static bool schedule2Enabled = true; // if false, hanya 1 schedule yang dipakai
   static bool wateringActive = false;
   static unsigned long wateringEndMillis = 0;
   static int lastCheckedMinute = -1;
@@ -125,6 +127,7 @@ void loop() {
     menitSiram_2 = prefs.getInt("j2m", menitSiram_2);
     durasiSiram = prefs.getInt("dur", durasiSiram);
     autoEnabled = prefs.getBool("auto", true);
+    schedule2Enabled = prefs.getBool("s2", true);
     prefsLoaded = true;
   }
 
@@ -148,7 +151,7 @@ void loop() {
     if (setBtn == LOW) {
       if (setMode == MODE_NONE) setMode = MODE_H1;
       else if (setMode == MODE_H1) setMode = MODE_M1;
-      else if (setMode == MODE_M1) setMode = MODE_H2;
+      else if (setMode == MODE_M1) setMode = (schedule2Enabled ? MODE_H2 : MODE_DUR);
       else if (setMode == MODE_H2) setMode = MODE_M2;
       else if (setMode == MODE_M2) setMode = MODE_DUR;
       else {
@@ -159,6 +162,7 @@ void loop() {
         prefs.putInt("j2h", jamSiram_2);
         prefs.putInt("j2m", menitSiram_2);
         prefs.putInt("dur", durasiSiram);
+        prefs.putBool("s2", schedule2Enabled);
       }
     }
   }
@@ -208,11 +212,11 @@ void loop() {
         autoEnabled = !autoEnabled;
         prefs.putBool("auto", autoEnabled);
       } else {
-        if (setMode == MODE_H1) jamSiram_1 = (jamSiram_1 + 1) % 24;
-        else if (setMode == MODE_M1) menitSiram_1 = (menitSiram_1 + 1) % 60;
-        else if (setMode == MODE_H2) jamSiram_2 = (jamSiram_2 + 1) % 24;
-        else if (setMode == MODE_M2) menitSiram_2 = (menitSiram_2 + 1) % 60;
-        else if (setMode == MODE_DUR) durasiSiram = max(1, min(120, durasiSiram + 1));
+        // In setting mode, the on/off (inc) button toggles between 1 or 2 schedules
+        schedule2Enabled = !schedule2Enabled;
+        prefs.putBool("s2", schedule2Enabled);
+        // if disabling schedule 2 and currently editing H2/M2, move to duration
+        if (!schedule2Enabled && (setMode == MODE_H2 || setMode == MODE_M2)) setMode = MODE_DUR;
       }
     }
   }
@@ -243,7 +247,7 @@ void loop() {
   if (curMin != lastCheckedMinute) {
     lastCheckedMinute = curMin;
     if (autoEnabled && !wateringActive) {
-      if ((curHour == jamSiram_1 && curMin == menitSiram_1) || (curHour == jamSiram_2 && curMin == menitSiram_2)) {
+      if ((curHour == jamSiram_1 && curMin == menitSiram_1) || (schedule2Enabled && curHour == jamSiram_2 && curMin == menitSiram_2)) {
         int key = curHour*100 + curMin;
         if (lastWateredMinute != key) {
           lastWateredMinute = key;
@@ -289,6 +293,8 @@ void loop() {
   if (autoEnabled) lcd.print("Auto:ON "); else lcd.print("Auto:OFF");
   lcd.setCursor(9,1);
   lcd.print("D:"); lcd.print(durasiSiram);
+  lcd.setCursor(13,1);
+  lcd.print("S:"); lcd.print(schedule2Enabled ? 2 : 1);
 }
 //-------
 
