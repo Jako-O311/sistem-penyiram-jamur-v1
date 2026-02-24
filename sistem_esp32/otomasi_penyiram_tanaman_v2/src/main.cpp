@@ -34,14 +34,14 @@ TM1637Display tm(CLK_tm1637, DIO_tm1637); //display digit jam
 #define clk_pin_encoder 32 //pin CLK rotary encoder
 #define dt_pin_encoder 33 //pin DT rotary encoder
 #define sw_pin_encoder 27 //pin SW rotary encoder - belum dipakai
-#define button_pin_set_waktu 34 //pin untuk set waktu siram
+#define button_pin_set_waktu 35 //pin untuk set waktu siram
+#define button_pin_siram_manual 34 //pin siram manual
 #define button_pin_onoff_otomatis 39 //on/off siram otomatis
-#define button_pin_siram_manual 35 //pin siram manual
 
 // // put function declarations here:
 // int myFunction(int, int);
 
-//tes lagi nanti ----
+//tes lagi nanti ---- 
 // rotary encoder state (updated in ISR)
 volatile int8_t encoderDelta = 0;
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
@@ -212,24 +212,32 @@ void loop() {
         autoEnabled = !autoEnabled;
         prefs.putBool("auto", autoEnabled);
       } else {
-        // In setting mode, the on/off (inc) button toggles between 1 or 2 schedules
-        schedule2Enabled = !schedule2Enabled;
-        prefs.putBool("s2", schedule2Enabled);
-        // if disabling schedule 2 and currently editing H2/M2, move to duration
-        if (!schedule2Enabled && (setMode == MODE_H2 || setMode == MODE_M2)) setMode = MODE_DUR;
+        if (setMode == MODE_H1) jamSiram_1 = (jamSiram_1 + 1) % 24;
+        else if (setMode == MODE_M1) menitSiram_1 = (menitSiram_1 + 1) % 60;
+        else if (setMode == MODE_H2) jamSiram_2 = (jamSiram_2 + 1) % 24;
+        else if (setMode == MODE_M2) menitSiram_2 = (menitSiram_2 + 1) % 60;
+        else if (setMode == MODE_DUR) durasiSiram = max(1, min(120, durasiSiram + 1));
       }
     }
   }
   lastIncButtonState = incBtn;
-
   // manual watering button: start watering immediately
+
+  // manual watering button: start watering immediately OR toggle schedule count when in set mode
   if (manualBtn != lastManualButtonState && nowMillis - lastButtonTime > debounce) {
     lastButtonTime = nowMillis;
     if (manualBtn == LOW) {
-      wateringActive = true;
-      wateringEndMillis = nowMillis + (unsigned long)durasiSiram * 60000UL;
-      digitalWrite(relay_pin_1, LOW);
-      digitalWrite(relay_pin_2, LOW);
+      if (setMode == MODE_NONE) {
+        wateringActive = true;
+        wateringEndMillis = nowMillis + (unsigned long)durasiSiram * 60000UL;
+        digitalWrite(relay_pin_1, LOW);
+        digitalWrite(relay_pin_2, LOW);
+      } else {
+        // toggle between 1 or 2 schedules while in setting mode
+        schedule2Enabled = !schedule2Enabled;
+        prefs.putBool("s2", schedule2Enabled);
+        if (!schedule2Enabled && (setMode == MODE_H2 || setMode == MODE_M2)) setMode = MODE_DUR;
+      }
     }
   }
   lastManualButtonState = manualBtn;
@@ -283,7 +291,7 @@ void loop() {
   }
 
   // small lcd status
-  lcd.clear();
+  // lcd.clear();
   lcd.setCursor(0,0);
   lcd.print("Waktu:");
   sprintf(timeStr, "%02d:%02d", curHour, curMin);
