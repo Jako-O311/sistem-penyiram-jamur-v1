@@ -95,7 +95,7 @@ void setup() {
   pinMode(clk_pin_encoder, INPUT_PULLUP);
   pinMode(dt_pin_encoder, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(clk_pin_encoder), handleEncoderISR, CHANGE);
-  
+  lcd.clear();
 }
 
 void loop() {
@@ -107,7 +107,7 @@ void loop() {
     return;
   }
   //tampilkan waktu di serial monitor dan lcd
-  char timeStr[9];
+  char timeStr[17]; //16+1 untuk null terminator
   
   //cek kodingan besok ---
   // Persistent prefs (loaded once)
@@ -291,14 +291,23 @@ void loop() {
   }
 
   // small lcd status
-  // lcd.clear();
   lcd.setCursor(0,0);
-  lcd.print("Waktu:");
-  sprintf(timeStr, "%02d:%02d", curHour, curMin);
-  lcd.setCursor(6,0);
+  if (schedule2Enabled == true)
+  {
+    sprintf(timeStr, "1:%02d:%02d 2:%02d:%02d", jamSiram_1, menitSiram_1, jamSiram_2, menitSiram_2);
+  } else {
+    sprintf(timeStr, "1:%02d:%02d         ", jamSiram_1, menitSiram_1);
+  }
+  // lcd.print("Waktu:");
+  // sprintf(timeStr, "%02d:%02d", curHour, curMin);
+  lcd.setCursor(0,0);
   lcd.print(timeStr);
   lcd.setCursor(0,1);
-  if (autoEnabled) lcd.print("Auto:ON "); else lcd.print("Auto:OFF");
+  if (autoEnabled) {
+    lcd.print("Auto:ON "); 
+  } else {
+    lcd.print("Auto:OFF");
+  }
   lcd.setCursor(9,1);
   lcd.print("D:"); lcd.print(durasiSiram);
   lcd.setCursor(13,1);
