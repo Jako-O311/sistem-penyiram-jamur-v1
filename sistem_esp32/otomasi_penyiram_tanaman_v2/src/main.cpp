@@ -95,7 +95,6 @@ void setup() {
   pinMode(clk_pin_encoder, INPUT_PULLUP);
   pinMode(dt_pin_encoder, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(clk_pin_encoder), handleEncoderISR, CHANGE);
-  lcd.clear();
 }
 
 void loop() {
@@ -221,17 +220,26 @@ void loop() {
     }
   }
   lastIncButtonState = incBtn;
-  // manual watering button: start watering immediately
 
   // manual watering button: start watering immediately OR toggle schedule count when in set mode
   if (manualBtn != lastManualButtonState && nowMillis - lastButtonTime > debounce) {
     lastButtonTime = nowMillis;
     if (manualBtn == LOW) {
       if (setMode == MODE_NONE) {
-        wateringActive = true;
-        wateringEndMillis = nowMillis + (unsigned long)durasiSiram * 60000UL;
-        digitalWrite(relay_pin_1, LOW);
-        digitalWrite(relay_pin_2, LOW);
+        // Toggle manual watering: if currently active and was manual (sentinel 0), turn off.
+        // If active because of auto (wateringEndMillis != 0), pressing manual will also stop it.
+        if (wateringActive) {
+          wateringActive = false;
+          wateringEndMillis = 0;
+          digitalWrite(relay_pin_1, HIGH);
+          digitalWrite(relay_pin_2, HIGH);
+        } else {
+          // turn relays on indefinitely until toggled off by manual press
+          wateringActive = true;
+          wateringEndMillis = 0; // sentinel: 0 means manual/indefinite
+          digitalWrite(relay_pin_1, LOW);
+          digitalWrite(relay_pin_2, LOW);
+        }
       } else {
         // toggle between 1 or 2 schedules while in setting mode
         schedule2Enabled = !schedule2Enabled;
@@ -242,14 +250,15 @@ void loop() {
   }
   lastManualButtonState = manualBtn;
 
-  // update watering state non-blocking
-  if (wateringActive && nowMillis >= wateringEndMillis) {
+  // update state penyiraman - non-blocking (hanya stop saat timer berakhir)
+  if (wateringActive && wateringEndMillis != 0 && nowMillis >= wateringEndMillis) {
     wateringActive = false;
+    wateringEndMillis = 0;
     digitalWrite(relay_pin_1, HIGH);
     digitalWrite(relay_pin_2, HIGH);
   }
 
-  // automatic watering on minute tick
+  // penyiraman otomatis dalam tick menit
   int curHour = timeinfo.tm_hour;
   int curMin = timeinfo.tm_min;
   if (curMin != lastCheckedMinute) {
