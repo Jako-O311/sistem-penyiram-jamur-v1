@@ -15,7 +15,7 @@ const char* password = "sobatartha";
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 7 * 3600;
 const int   daylightOffset_sec = 0;
-//pengaturan waktu siram(setting 24 jam)
+//pengaturan waktu siram awal(setting 24 jam)
 int jamSiram_1    = 10;
 int menitSiram_1  = 00;
 int jamSiram_2    = 15;
@@ -42,21 +42,9 @@ TM1637Display tm(CLK_tm1637, DIO_tm1637); //display digit jam
 // int myFunction(int, int);
 
 //tes lagi nanti ---- 
-// rotary encoder state (updated in ISR)
-volatile int8_t encoderDelta = 0;
-portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
-
-void IRAM_ATTR handleEncoderISR() {
-  int clk = digitalRead(clk_pin_encoder);
-  int dt = digitalRead(dt_pin_encoder);
-  // simple direction detection: when CLK changes, compare DT
-  if (clk == dt) {
-    encoderDelta++;
-  } else {
-    encoderDelta--;
-  }
-}
-//-----
+// Rotary encoder using Encoder library
+Encoder enc(clk_pin_encoder, dt_pin_encoder);
+long lastEncoderPos = 0;
 
 void setup() {
   // put your setup code here, to run once:
@@ -94,7 +82,8 @@ void setup() {
   //rotary encoder
   pinMode(clk_pin_encoder, INPUT_PULLUP);
   pinMode(dt_pin_encoder, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(clk_pin_encoder), handleEncoderISR, CHANGE);
+  // initialize encoder last position
+  lastEncoderPos = enc.read();
 }
 
 void loop() {
@@ -107,6 +96,7 @@ void loop() {
   }
   //tampilkan waktu di serial monitor dan lcd
   char timeStr[17]; //16+1 untuk null terminator
+  char durasiStr[3]; //2 digit + null terminator
   
   //cek kodingan besok ---
   // Persistent prefs (loaded once)
@@ -167,37 +157,39 @@ void loop() {
   }
   lastSetButtonState = setBtn;
 
-  //tes lagi nanti----
-  // handle rotary encoder adjustments when in set mode
+  // handle rotary encoder adjustments when in set mode using Encoder lib
   if (setMode != MODE_NONE) {
-    int8_t delta = 0;
-    portENTER_CRITICAL(&mux);
-    delta = encoderDelta;
-    encoderDelta = 0;
-    portEXIT_CRITICAL(&mux);
-    if (delta != 0) {
-      // apply delta (can be multiple steps)
-      if (setMode == MODE_H1) {
-        int v = jamSiram_1 + delta;
-        while (v < 0) v += 24;
-        jamSiram_1 = v % 24;
-      } else if (setMode == MODE_M1) {
-        int v = menitSiram_1 + delta;
-        while (v < 0) v += 60;
-        menitSiram_1 = v % 60;
-      } else if (setMode == MODE_H2) {
-        int v = jamSiram_2 + delta;
-        while (v < 0) v += 24;
-        jamSiram_2 = v % 24;
-      } else if (setMode == MODE_M2) {
-        int v = menitSiram_2 + delta;
-        while (v < 0) v += 60;
-        menitSiram_2 = v % 60;
-      } else if (setMode == MODE_DUR) {
-        int v = durasiSiram + delta;
-        if (v < 1) v = 1;
-        if (v > 120) v = 120;
-        durasiSiram = v;
+    long pos = enc.read();
+    long deltaCounts = pos - lastEncoderPos;
+    if (deltaCounts != 0) {
+      // many encoders produce 4 counts per detent; treat 4 counts as one step
+      long steps = deltaCounts / 4; // integer division; partial counts are retained
+      if (steps != 0) {
+        lastEncoderPos += steps * 4;
+        int delta = (int)steps;
+        // apply delta (can be multiple steps)
+        if (setMode == MODE_H1) {
+          int v = jamSiram_1 + delta;
+          while (v < 0) v += 24;
+          jamSiram_1 = v % 24;
+        } else if (setMode == MODE_M1) {
+          int v = menitSiram_1 + delta;
+          while (v < 0) v += 60;
+          menitSiram_1 = v % 60;
+        } else if (setMode == MODE_H2) {
+          int v = jamSiram_2 + delta;
+          while (v < 0) v += 24;
+          jamSiram_2 = v % 24;
+        } else if (setMode == MODE_M2) {
+          int v = menitSiram_2 + delta;
+          while (v < 0) v += 60;
+          menitSiram_2 = v % 60;
+        } else if (setMode == MODE_DUR) {
+          int v = durasiSiram + delta;
+          if (v < 1) v = 1;
+          if (v > 120) v = 120;
+          durasiSiram = v;
+        }
       }
     }
   }
@@ -313,12 +305,13 @@ void loop() {
   lcd.print(timeStr);
   lcd.setCursor(0,1);
   if (autoEnabled) {
-    lcd.print("Auto:ON "); 
+    lcd.print("Auto:ON ");
   } else {
     lcd.print("Auto:OFF");
   }
   lcd.setCursor(9,1);
-  lcd.print("D:"); lcd.print(durasiSiram);
+  sprintf(durasiStr, "%02d", durasiSiram);
+  lcd.print("D:"); lcd.print(durasiStr);
   lcd.setCursor(13,1);
   lcd.print("S:"); lcd.print(schedule2Enabled ? 2 : 1);
 }
