@@ -28,6 +28,10 @@ RTC_DS3231 rtc;
 unsigned long lastRtcSyncMillis = 0;
 const unsigned long RTC_SYNC_INTERVAL = 6UL * 60UL * 60UL * 1000UL; // 6 jam
 
+// temporary LCD message control
+unsigned long lcdTempExpire = 0;
+bool lcdTempActive = false;
+
 //pinout
 LiquidCrystal_I2C lcd(0x27, 16, 2); //lcd i2c 16x2
 #define rtc_SDA 21 //pin SDA RTC
@@ -142,8 +146,13 @@ void setup() {
   // coba konek wifi dengan timeout 10s
   bool wifiConnected = tryConnectWiFi(10000);
   if (wifiConnected) {
+    lcd.setCursor(0, 0);
     lcd.print("WiFi tersambung!");
     Serial.println("WiFi tersambung!");
+    // tampilkan pesan sementara selama 5 detik (non-blocking)
+    // untuk memberi waktu membaca dan stabilisasi sistem
+    lcdTempActive = true;
+    lcdTempExpire = millis() + 5000UL;
     // sinkronisasi waktu dengan ntp
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     // tunggu sebentar hingga waktu lokal tersedia lalu sync ke RTC
@@ -152,15 +161,26 @@ void setup() {
       Wire.begin(rtc_SDA, rtc_SCL);
       syncRtcWithNtp();
     } else {
+      lcd.setCursor(0, 0);
+      lcd.print("NTP tdk tersedia");
       Serial.println("Waktu NTP tidak tersedia setelah koneksi");
     }
   } else {
-    lcd.print("WiFi gagal    ");
+    lcd.setCursor(0, 0);
+    lcd.print("WiFi gagal      ");
+    lcd.setCursor(0, 1);
+    lcd.print("Menggunakan RTC ");
     Serial.println("WiFi gagal, menggunakan RTC jika tersedia");
+    // tampilkan pesan sementara selama 5 detik (non-blocking)
+    // untuk memberi waktu membaca dan stabilisasi sistem
+    lcdTempActive = true;
+    lcdTempExpire = millis() + 5000UL;
     Wire.begin(rtc_SDA, rtc_SCL);
     if (rtc.begin()) {
       setSystemTimeFromRtc();
     } else {
+      lcd.setCursor(0, 0);
+      lcd.print("RTC gagal!      ");
       Serial.println("RTC tidak dapat diinisialisasi");
     }
   }
@@ -384,29 +404,36 @@ void loop() {
     tm.showNumberDecEx(number, colon, true, 4, 0);
   }
 
-  // small lcd status
-  lcd.setCursor(0,0);
-  if (schedule2Enabled == true)
-  {
-    sprintf(timeStr, "1:%02d:%02d 2:%02d:%02d", jamSiram_1, menitSiram_1, jamSiram_2, menitSiram_2);
-  } else {
-    sprintf(timeStr, "1:%02d:%02d         ", jamSiram_1, menitSiram_1);
+  // small lcd status (skip updates if a temporary message is active)
+  if (lcdTempActive) {
+    if (millis() >= lcdTempExpire) {
+      lcdTempActive = false;
+    }
   }
-  // lcd.print("Waktu:");
-  // sprintf(timeStr, "%02d:%02d", curHour, curMin);
-  lcd.setCursor(0,0);
-  lcd.print(timeStr);
-  lcd.setCursor(0,1);
-  if (autoEnabled) {
-    lcd.print("Auto:ON ");
-  } else {
-    lcd.print("Auto:OFF");
+  if (!lcdTempActive) {
+    lcd.setCursor(0,0);
+    if (schedule2Enabled == true)
+    {
+      sprintf(timeStr, "1:%02d:%02d 2:%02d:%02d ", jamSiram_1, menitSiram_1, jamSiram_2, menitSiram_2);
+    } else {
+      sprintf(timeStr, "1:%02d:%02d         ", jamSiram_1, menitSiram_1);
+    }
+    // lcd.print("Waktu:");
+    // sprintf(timeStr, "%02d:%02d", curHour, curMin);
+    lcd.setCursor(0,0);
+    lcd.print(timeStr);
+    lcd.setCursor(0,1);
+    if (autoEnabled) {
+      lcd.print("Auto:ON ");
+    } else {
+      lcd.print("Auto:OFF");
+    }
+    lcd.setCursor(9,1);
+    sprintf(durasiStr, "%02d", durasiSiram);
+    lcd.print("D:"); lcd.print(durasiStr);
+    lcd.setCursor(13,1);
+    lcd.print("S:"); lcd.print(schedule2Enabled ? 2 : 1);
   }
-  lcd.setCursor(9,1);
-  sprintf(durasiStr, "%02d", durasiSiram);
-  lcd.print("D:"); lcd.print(durasiStr);
-  lcd.setCursor(13,1);
-  lcd.print("S:"); lcd.print(schedule2Enabled ? 2 : 1);
 }
 //-------
 
