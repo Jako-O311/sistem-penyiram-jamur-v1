@@ -7,6 +7,7 @@
 #include <RTClib.h>
 #include <Encoder.h>
 #include <Preferences.h>
+#include <sys/time.h>
 
 //konfigurasi wifi
 const char* ssid     = "MBAK ARTHA 4G";
@@ -21,6 +22,11 @@ int menitSiram_1  = 00;
 int jamSiram_2    = 15;
 int menitSiram_2  = 00;
 int durasiSiram = 10; //dalam menit
+
+// RTC
+RTC_DS3231 rtc;
+unsigned long lastRtcSyncMillis = 0;
+const unsigned long RTC_SYNC_INTERVAL = 6UL * 60UL * 60UL * 1000UL; // 6 jam
 
 //pinout
 LiquidCrystal_I2C lcd(0x27, 16, 2); //lcd i2c 16x2
@@ -58,6 +64,61 @@ void IRAM_ATTR handleEncoderISR() {
 }
 //-----
 
+// Utilities: WiFi connect with timeout
+bool tryConnectWiFi(unsigned long timeoutMs) {
+  WiFi.begin(ssid, password);
+  unsigned long start = millis();
+  while (millis() - start < timeoutMs) {
+    if (WiFi.status() == WL_CONNECTED) return true;
+    delay(200);
+    Serial.print(".");
+  }
+  return (WiFi.status() == WL_CONNECTED);
+}
+
+// Set system time from RTC
+void setSystemTimeFromRtc() {
+  if (!rtc.begin()) return;
+  DateTime t = rtc.now();
+  time_t tt = (time_t)t.unixtime();
+  struct timeval tv;
+  tv.tv_sec = tt;
+  tv.tv_usec = 0;
+  settimeofday(&tv, NULL);
+  Serial.print("Waktu sistem diset dari RTC: ");
+  {
+    DateTime tt = rtc.now();
+    char buf[32];
+    sprintf(buf, "%04d-%02d-%02d %02d:%02d:%02d", tt.year(), tt.month(), tt.day(), tt.hour(), tt.minute(), tt.second());
+    Serial.println(buf);
+  }
+}
+
+// Sync RTC from NTP/system time
+void syncRtcWithNtp() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Gagal mendapatkan waktu dari NTP untuk sync RTC");
+    return;
+  }
+  time_t t = mktime(&timeinfo);
+  DateTime dt((uint32_t)t);
+  if (!rtc.begin()) {
+    Serial.println("RTC tidak tersedia untuk sync");
+    return;
+  }
+  rtc.adjust(dt);
+  lastRtcSyncMillis = millis();
+  Serial.print("RTC disinkronkan dengan NTP: ");
+  {
+    DateTime tt = rtc.now();
+    char buf2[32];
+    sprintf(buf2, "%04d-%02d-%02d %02d:%02d:%02d", tt.year(), tt.month(), tt.day(), tt.hour(), tt.minute(), tt.second());
+    Serial.println(buf2);
+  }
+}
+
+
 void setup() {
   // put your setup code here, to run once:
   // int result = myFunction(2, 3);
@@ -78,15 +139,31 @@ void setup() {
   lcd.setCursor(0, 0);
   lcd.print("Menyambungkan...");
   Serial.println("Menyambungkan...");
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  // coba konek wifi dengan timeout 10s
+  bool wifiConnected = tryConnectWiFi(10000);
+  if (wifiConnected) {
+    lcd.print("WiFi tersambung!");
+    Serial.println("WiFi tersambung!");
+    // sinkronisasi waktu dengan ntp
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    // tunggu sebentar hingga waktu lokal tersedia lalu sync ke RTC
+    struct tm timeinfo;
+    if (getLocalTime(&timeinfo, 5000)) {
+      Wire.begin(rtc_SDA, rtc_SCL);
+      syncRtcWithNtp();
+    } else {
+      Serial.println("Waktu NTP tidak tersedia setelah koneksi");
+    }
+  } else {
+    lcd.print("WiFi gagal    ");
+    Serial.println("WiFi gagal, menggunakan RTC jika tersedia");
+    Wire.begin(rtc_SDA, rtc_SCL);
+    if (rtc.begin()) {
+      setSystemTimeFromRtc();
+    } else {
+      Serial.println("RTC tidak dapat diinisialisasi");
+    }
   }
-  lcd.print("WiFi tersambung!");
-  Serial.println("WiFi tersambung!");
-  //sinkronisasi waktu dengan ntp
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   //tombol input
   pinMode(button_pin_set_waktu, INPUT_PULLUP);
   pinMode(button_pin_onoff_otomatis, INPUT_PULLUP);
@@ -104,6 +181,13 @@ void loop() {
   if (!getLocalTime(&timeinfo)) {
     Serial.println("Gagal mendapatkan waktu");
     return;
+  }
+  // Jika terkoneksi ke WiFi, sinkronkan RTC secara periodik
+  if (WiFi.status() == WL_CONNECTED) {
+    if (millis() - lastRtcSyncMillis > RTC_SYNC_INTERVAL) {
+      Wire.begin(rtc_SDA, rtc_SCL);
+      syncRtcWithNtp();
+    }
   }
   //tampilkan waktu di serial monitor dan lcd
   char timeStr[17]; //16+1 untuk null terminator
