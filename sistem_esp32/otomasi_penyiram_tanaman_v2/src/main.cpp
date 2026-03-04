@@ -32,6 +32,16 @@ const unsigned long RTC_SYNC_INTERVAL = 6UL * 60UL * 60UL * 1000UL; // 6 jam
 unsigned long lcdTempExpire = 0;
 bool lcdTempActive = false;
 
+// Button / setting handling
+enum SetMode {MODE_NONE=0, MODE_H1, MODE_M1, MODE_H2, MODE_M2, MODE_DUR};
+static SetMode setMode = MODE_NONE;
+// button state tracking (prevent false startup triggers)
+unsigned long lastButtonTime = 0;
+const unsigned long debounce = 50;
+int lastSetButtonState = HIGH;
+int lastIncButtonState = HIGH;
+int lastManualButtonState = HIGH;
+
 //pinout
 LiquidCrystal_I2C lcd(0x27, 16, 2); //lcd i2c 16x2
 #define rtc_SDA 21 //pin SDA RTC
@@ -192,6 +202,12 @@ void setup() {
   pinMode(clk_pin_encoder, INPUT_PULLUP);
   pinMode(dt_pin_encoder, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(clk_pin_encoder), handleEncoderISR, CHANGE);
+
+  //inisialisasi button state untuk tracking current readings untuk menghindari startup events palsu
+  lastButtonTime = millis();
+  lastSetButtonState = digitalRead(button_pin_set_waktu);
+  lastIncButtonState = digitalRead(button_pin_onoff_otomatis);
+  lastManualButtonState = digitalRead(button_pin_siram_manual);
 }
 
 void loop() {
@@ -235,14 +251,9 @@ void loop() {
     prefsLoaded = true;
   }
 
-  // Button / setting handling
-  enum SetMode {MODE_NONE=0, MODE_H1, MODE_M1, MODE_H2, MODE_M2, MODE_DUR};
-  static SetMode setMode = MODE_NONE;
-  static unsigned long lastButtonTime = 0;
-  const unsigned long debounce = 50;
-  static int lastSetButtonState = HIGH;
-  static int lastIncButtonState = HIGH;
-  static int lastManualButtonState = HIGH;
+  // // Button / setting handling
+  // enum SetMode {MODE_NONE=0, MODE_H1, MODE_M1, MODE_H2, MODE_M2, MODE_DUR};
+  // static SetMode setMode = MODE_NONE;
 
   int setBtn = digitalRead(button_pin_set_waktu);
   int incBtn = digitalRead(button_pin_onoff_otomatis);
