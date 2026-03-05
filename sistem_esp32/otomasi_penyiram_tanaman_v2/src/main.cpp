@@ -165,15 +165,38 @@ void setup() {
     lcdTempExpire = millis() + 5000UL;
     // sinkronisasi waktu dengan ntp
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-    // tunggu sebentar hingga waktu lokal tersedia lalu sync ke RTC
+    // tunggu hingga waktu NTP tersedia sampai 15 detik, lalu sync ke RTC
     struct tm timeinfo;
-    if (getLocalTime(&timeinfo, 5000)) {
+    unsigned long ntpStart = millis();
+    bool ntpAvailable = false;
+    lcd.setCursor(0,1);
+    lcd.print("Mencari NTP...   ");
+    while (millis() - ntpStart < 15000UL) {
+      if (getLocalTime(&timeinfo, 2000)) {
+        ntpAvailable = true;
+        break;
+      }
+      delay(500);
+    }
+    if (ntpAvailable) {
       Wire.begin(rtc_SDA, rtc_SCL);
       syncRtcWithNtp();
     } else {
       lcd.setCursor(0, 0);
       lcd.print("NTP tdk tersedia");
-      Serial.println("Waktu NTP tidak tersedia setelah koneksi");
+      lcd.setCursor(0, 1);
+      lcd.print("Menggunakan RTC ");
+      Serial.println("Waktu NTP tidak tersedia setelah 15s, menggunakan RTC jika ada");
+      Wire.begin(rtc_SDA, rtc_SCL);
+      if (rtc.begin()) {
+        setSystemTimeFromRtc();
+      } else {
+        lcd.setCursor(0, 0);
+        lcd.print("RTC gagal!      ");
+        lcd.setCursor(0, 1);
+        lcd.print("periksa hardware");
+        Serial.println("RTC tidak dapat diinisialisasi");
+      }
     }
   } else {
     lcd.setCursor(0, 0);
@@ -191,6 +214,8 @@ void setup() {
     } else {
       lcd.setCursor(0, 0);
       lcd.print("RTC gagal!      ");
+      lcd.setCursor(0, 1);
+      lcd.print("periksa hardware");
       Serial.println("RTC tidak dapat diinisialisasi");
     }
   }
