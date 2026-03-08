@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const MyApp());
@@ -54,17 +57,35 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  // TODO: replace with your real device id and backend base URL
+  final String deviceId = 'device-001';
+  final String baseUrl = 'http://192.168.1.100:3000';
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+  // Removed unused counter and increment function
+
+  Future<void> sendCommand(String command, [Map<String, dynamic>? params]) async {
+    final uri = Uri.parse('$baseUrl/api/devices/$deviceId/command');
+    final body = jsonEncode({'command': command, if (params != null) 'params': params});
+    try {
+      final resp = await http.post(uri, headers: {'Content-Type': 'application/json'}, body: body).timeout(const Duration(seconds: 5));
+      if (!mounted) return;
+      if (resp.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perintah terkirim')));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: ${resp.statusCode}')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  void _toggleManual() => sendCommand('toggle_manual');
+  void _toggleAuto() => sendCommand('toggle_auto');
+  void _toggleScheduleCount() => sendCommand('toggle_schedule_count');
+
+  void _openScheduleEditor() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => SchedulePage(deviceId: deviceId, baseUrl: baseUrl)));
   }
 
   @override
@@ -95,29 +116,95 @@ class _MyHomePageState extends State<MyHomePage> {
             crossAxisSpacing: 16,
             children: [
               ElevatedButton(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tombol 1 ditekan'))),
-                child: const Text('Tombol 1'),
+                onPressed: _toggleManual,
+                child: const Text('Siram Manual'),
               ),
               ElevatedButton(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tombol 2 ditekan'))),
-                child: const Text('Tombol 2'),
+                onPressed: _toggleAuto,
+                child: const Text('Penyiram Otomatis'),
               ),
               ElevatedButton(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tombol 3 ditekan'))),
-                child: const Text('Tombol 3'),
+                onPressed: _toggleScheduleCount,
+                child: const Text('1x / 2x per Jadwal'),
               ),
               ElevatedButton(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tombol 4 ditekan'))),
-                child: const Text('Tombol 4'),
+                onPressed: _openScheduleEditor,
+                child: const Text('Ubah Jadwal'),
               ),
             ],
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+      
+    );
+  }
+}
+
+class SchedulePage extends StatefulWidget {
+  final String deviceId;
+  final String baseUrl;
+  const SchedulePage({super.key, required this.deviceId, required this.baseUrl});
+
+  @override
+  State<SchedulePage> createState() => _SchedulePageState();
+}
+
+class _SchedulePageState extends State<SchedulePage> {
+  TimeOfDay? _time;
+  int _runs = 1;
+
+  Future<void> _pickTime() async {
+    final t = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+    if (t != null) setState(() => _time = t);
+  }
+
+  Future<void> _saveSchedule() async {
+    if (_time == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pilih waktu dulu')));
+      return;
+    }
+    final timeStr = _time!.format(context);
+    final uri = Uri.parse('${widget.baseUrl}/api/devices/${widget.deviceId}/schedule');
+    final body = jsonEncode({'schedules': [{'time': timeStr, 'runs': _runs}]});
+    try {
+      final resp = await http.post(uri, headers: {'Content-Type': 'application/json'}, body: body).timeout(const Duration(seconds: 5));
+      if (!mounted) return;
+      if (resp.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Jadwal disimpan')));
+        Navigator.of(context).pop();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: ${resp.statusCode}')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Ubah Jadwal')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            ListTile(
+              title: Text(_time == null ? 'Pilih waktu' : 'Waktu: ${_time!.format(context)}'),
+              trailing: ElevatedButton(onPressed: _pickTime, child: const Text('Pilih')),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text('Jumlah siraman per jadwal: '),
+                const SizedBox(width: 8),
+                DropdownButton<int>(value: _runs, items: const [DropdownMenuItem(value:1,child:Text('1')), DropdownMenuItem(value:2,child:Text('2'))], onChanged: (v){ if(v!=null) setState(()=>_runs=v); }),
+              ],
+            ),
+            const Spacer(),
+            ElevatedButton(onPressed: _saveSchedule, child: const Text('Simpan'))
+          ],
+        ),
       ),
     );
   }
