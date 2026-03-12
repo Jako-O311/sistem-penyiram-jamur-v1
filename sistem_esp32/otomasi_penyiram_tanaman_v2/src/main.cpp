@@ -41,6 +41,7 @@ const unsigned long debounce = 50;
 int lastSetButtonState = HIGH;
 int lastIncButtonState = HIGH;
 int lastManualButtonState = HIGH;
+int lastSwButtonState = HIGH; // encoder switch (SW)
 
 //pinout
 LiquidCrystal_I2C lcd(0x27, 16, 2); //lcd i2c 16x2
@@ -74,6 +75,20 @@ void IRAM_ATTR handleEncoderISR() {
     encoderDelta++;
   } else {
     encoderDelta--;
+  }
+}
+// Handle encoder switch press when in MODE_DUR: toggle durasi between 10 and 20
+void handleEncoderSwitchPress() {
+  if (setMode == MODE_DUR) {
+    if (durasiSiram == 10) durasiSiram = 20;
+    else durasiSiram = 10;
+    // show a brief LCD message indicating the new duration
+    lcdTempActive = true;
+    lcdTempExpire = millis() + 2000UL;
+    lcd.setCursor(0,1);
+    char buf[17];
+    sprintf(buf, "Durasi:%02d menit ", durasiSiram);
+    lcd.print(buf);
   }
 }
 //-----
@@ -223,6 +238,7 @@ void setup() {
   pinMode(button_pin_set_waktu, INPUT_PULLUP);
   pinMode(button_pin_onoff_otomatis, INPUT_PULLUP);
   pinMode(button_pin_siram_manual, INPUT_PULLUP);
+  pinMode(sw_pin_encoder, INPUT_PULLUP);
   //rotary encoder
   pinMode(clk_pin_encoder, INPUT_PULLUP);
   pinMode(dt_pin_encoder, INPUT_PULLUP);
@@ -233,6 +249,7 @@ void setup() {
   lastSetButtonState = digitalRead(button_pin_set_waktu);
   lastIncButtonState = digitalRead(button_pin_onoff_otomatis);
   lastManualButtonState = digitalRead(button_pin_siram_manual);
+  lastSwButtonState = digitalRead(sw_pin_encoder);
 }
 
 void loop() {
@@ -283,6 +300,7 @@ void loop() {
   int setBtn = digitalRead(button_pin_set_waktu);
   int incBtn = digitalRead(button_pin_onoff_otomatis);
   int manualBtn = digitalRead(button_pin_siram_manual);
+  int swBtn = digitalRead(sw_pin_encoder);
   unsigned long nowMillis = millis();
 
   // set button: cycle through fields
@@ -390,6 +408,16 @@ void loop() {
     }
   }
   lastManualButtonState = manualBtn;
+
+  // encoder switch handling: hanya berfungsi saat MODE_DUR
+  if (swBtn != lastSwButtonState && nowMillis - lastButtonTime > debounce) {
+    lastButtonTime = nowMillis;
+    if (swBtn == LOW) {
+      handleEncoderSwitchPress();
+      if (prefsLoaded) prefs.putInt("dur", durasiSiram);
+    }
+  }
+  lastSwButtonState = swBtn;
 
   // update state penyiraman - non-blocking (hanya stop saat timer berakhir)
   if (wateringActive && wateringEndMillis != 0 && nowMillis >= wateringEndMillis) {
