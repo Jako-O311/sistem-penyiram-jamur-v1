@@ -81,14 +81,15 @@ void IRAM_ATTR handleEncoderISR() {
 void handleEncoderSwitchPress() {
   if (setMode == MODE_DUR) {
     if (durasiSiram == 10) durasiSiram = 20;
+    else if (durasiSiram == 20) durasiSiram = 30;
     else durasiSiram = 10;
-    // show a brief LCD message indicating the new duration
-    lcdTempActive = true;
-    lcdTempExpire = millis() + 2000UL;
-    lcd.setCursor(0,1);
-    char buf[17];
-    sprintf(buf, "Durasi:%02d menit ", durasiSiram);
-    lcd.print(buf);
+    // // show a brief LCD message indicating the new duration
+    // lcdTempActive = true;
+    // lcdTempExpire = millis() + 2000UL;
+    // lcd.setCursor(0,1);
+    // char buf[17];
+    // sprintf(buf, "Durasi:%02d menit ", durasiSiram);
+    // lcd.print(buf);
   }
 }
 //-----
@@ -202,6 +203,10 @@ void setup() {
       lcd.setCursor(0, 1);
       lcd.print("Menggunakan RTC ");
       Serial.println("Waktu NTP tidak tersedia setelah 15s, menggunakan RTC jika ada");
+      // tampilkan pesan sementara selama 5 detik (non-blocking)
+      // untuk memberi waktu membaca dan stabilisasi sistem
+      lcdTempActive = true;
+      lcdTempExpire = millis() + 5000UL;
       Wire.begin(rtc_SDA, rtc_SCL);
       if (rtc.begin()) {
         setSystemTimeFromRtc();
@@ -250,6 +255,9 @@ void setup() {
   lastIncButtonState = digitalRead(button_pin_onoff_otomatis);
   lastManualButtonState = digitalRead(button_pin_siram_manual);
   lastSwButtonState = digitalRead(sw_pin_encoder);
+
+  // membersihkan display lcd
+  lcd.clear();
 }
 
 void loop() {
