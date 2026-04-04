@@ -506,6 +506,12 @@ void loop() {
     lcd.setCursor(13,1);
     lcd.print("S:"); lcd.print(schedule2Enabled ? 2 : 1);
   }
+  // update RTC tiap akhir void loop agar waktu RTC up to date saat tidak tersambung internet
+  Wire.begin(rtc_SDA, rtc_SCL);
+  if (rtc.begin()) {
+    time_t tt = mktime(&timeinfo);
+    rtc.adjust(DateTime((uint32_t)tt));
+  }
 }
 //-------
 
