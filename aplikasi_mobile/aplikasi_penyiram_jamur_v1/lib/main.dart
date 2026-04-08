@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'pages/log_penyiraman.dart';
+import 'pages/log_kerusakan.dart';
 
 void main() {
   runApp(const MyApp());
@@ -60,6 +62,7 @@ class _MyHomePageState extends State<MyHomePage> {
   // TODO: replace with your real device id and backend base URL
   final String deviceId = 'device-001';
   final String baseUrl = 'http://192.168.1.100:3000';
+  int _selectedIndex = 0;
 
   // Removed unused counter and increment function
 
@@ -88,6 +91,44 @@ class _MyHomePageState extends State<MyHomePage> {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => SchedulePage(deviceId: deviceId, baseUrl: baseUrl)));
   }
 
+  void _onNavBarTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  Widget _buildHomeContent() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: GridView.count(
+          shrinkWrap: true,
+          crossAxisCount: 2,
+          mainAxisSpacing: 16,
+          crossAxisSpacing: 16,
+          children: [
+            ElevatedButton(
+              onPressed: _toggleManual,
+              child: const Text('Siram Manual'),
+            ),
+            ElevatedButton(
+              onPressed: _toggleAuto,
+              child: const Text('Penyiram Otomatis'),
+            ),
+            ElevatedButton(
+              onPressed: _toggleScheduleCount,
+              child: const Text('1x / 2x per Jadwal'),
+            ),
+            ElevatedButton(
+              onPressed: _openScheduleEditor,
+              child: const Text('Ubah Jadwal'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // This method is rerun every time setState is called, for instance as done
@@ -106,36 +147,29 @@ class _MyHomePageState extends State<MyHomePage> {
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: GridView.count(
-            shrinkWrap: true,
-            crossAxisCount: 2,
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 16,
-            children: [
-              ElevatedButton(
-                onPressed: _toggleManual,
-                child: const Text('Siram Manual'),
-              ),
-              ElevatedButton(
-                onPressed: _toggleAuto,
-                child: const Text('Penyiram Otomatis'),
-              ),
-              ElevatedButton(
-                onPressed: _toggleScheduleCount,
-                child: const Text('1x / 2x per Jadwal'),
-              ),
-              ElevatedButton(
-                onPressed: _openScheduleEditor,
-                child: const Text('Ubah Jadwal'),
-              ),
-            ],
+      body: _selectedIndex == 0
+          ? _buildHomeContent()
+          : _selectedIndex == 1
+              ? const log_penyiraman()
+              : const log_kerusakan(),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Beranda',
           ),
-        ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.water_drop),
+            label: 'Log Penyiraman',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.warning),
+            label: 'Log Kerusakan',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        onTap: _onNavBarTapped,
       ),
-      
     );
   }
 }
