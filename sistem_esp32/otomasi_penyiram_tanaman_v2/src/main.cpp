@@ -23,6 +23,10 @@ int jamSiram_2    = 15;
 int menitSiram_2  = 00;
 int durasiSiram = 10; //dalam menit
 
+// Variabel untuk setting waktu manual
+int setJam = 0;
+int setMenit = 0;
+
 // RTC
 RTC_DS3231 rtc;
 unsigned long lastRtcSyncMillis = 0;
@@ -33,7 +37,7 @@ unsigned long lcdTempExpire = 0;
 bool lcdTempActive = false;
 
 // Button / setting handling
-enum SetMode {MODE_NONE=0, MODE_H1, MODE_M1, MODE_H2, MODE_M2, MODE_DUR};
+enum SetMode {MODE_NONE=0, MODE_H1, MODE_M1, MODE_H2, MODE_M2, MODE_DUR, MODE_TIME_H, MODE_TIME_M};
 static SetMode setMode = MODE_NONE;
 // button state tracking (prevent false startup triggers)
 unsigned long lastButtonTime = 0;
@@ -315,20 +319,54 @@ void loop() {
   if (setBtn != lastSetButtonState && nowMillis - lastButtonTime > debounce) {
     lastButtonTime = nowMillis;
     if (setBtn == LOW) {
-      if (setMode == MODE_NONE) setMode = MODE_H1;
-      else if (setMode == MODE_H1) setMode = MODE_M1;
-      else if (setMode == MODE_M1) setMode = (schedule2Enabled ? MODE_H2 : MODE_DUR);
-      else if (setMode == MODE_H2) setMode = MODE_M2;
-      else if (setMode == MODE_M2) setMode = MODE_DUR;
-      else {
-        setMode = MODE_NONE;
-        // save settings
-        prefs.putInt("j1h", jamSiram_1);
-        prefs.putInt("j1m", menitSiram_1);
-        prefs.putInt("j2h", jamSiram_2);
-        prefs.putInt("j2m", menitSiram_2);
-        prefs.putInt("dur", durasiSiram);
-        prefs.putBool("s2", schedule2Enabled);
+      if (autoEnabled) {
+        // Mode setting penyiraman
+        if (setMode == MODE_NONE) setMode = MODE_H1;
+        else if (setMode == MODE_H1) setMode = MODE_M1;
+        else if (setMode == MODE_M1) setMode = (schedule2Enabled ? MODE_H2 : MODE_DUR);
+        else if (setMode == MODE_H2) setMode = MODE_M2;
+        else if (setMode == MODE_M2) setMode = MODE_DUR;
+        else {
+          setMode = MODE_NONE;
+          // save settings penyiraman
+          prefs.putInt("j1h", jamSiram_1);
+          prefs.putInt("j1m", menitSiram_1);
+          prefs.putInt("j2h", jamSiram_2);
+          prefs.putInt("j2m", menitSiram_2);
+          prefs.putInt("dur", durasiSiram);
+          prefs.putBool("s2", schedule2Enabled);
+        }
+      } else {
+        // Mode setting waktu manual
+        if (setMode == MODE_NONE) {
+          setMode = MODE_TIME_H;
+          // Ambil waktu saat ini untuk setting
+          struct tm timeinfo;
+          if (getLocalTime(&timeinfo)) {
+            setJam = timeinfo.tm_hour;
+            setMenit = timeinfo.tm_min;
+          }
+        } else if (setMode == MODE_TIME_H) setMode = MODE_TIME_M;
+        else {
+          setMode = MODE_NONE;
+          // Set waktu sistem dan RTC
+          struct tm timeinfo;
+          if (getLocalTime(&timeinfo)) {
+            timeinfo.tm_hour = setJam;
+            timeinfo.tm_min = setMenit;
+            timeinfo.tm_sec = 0;
+            time_t t = mktime(&timeinfo);
+            struct timeval tv;
+            tv.tv_sec = t;
+            tv.tv_usec = 0;
+            settimeofday(&tv, NULL);
+            // Sync ke RTC
+            DateTime dt((uint32_t)t);
+            if (rtc.begin()) {
+              rtc.adjust(dt);
+            }
+          }
+        }
       }
     }
   }
@@ -365,6 +403,14 @@ void loop() {
         if (v < 1) v = 1;
         if (v > 120) v = 120;
         durasiSiram = v;
+      } else if (setMode == MODE_TIME_H) {
+        int v = setJam + delta;
+        while (v < 0) v += 24;
+        setJam = v % 24;
+      } else if (setMode == MODE_TIME_M) {
+        int v = setMenit + delta;
+        while (v < 0) v += 60;
+        setMenit = v % 60;
       }
     }
   }
@@ -383,6 +429,8 @@ void loop() {
         else if (setMode == MODE_H2) jamSiram_2 = (jamSiram_2 + 1) % 24;
         else if (setMode == MODE_M2) menitSiram_2 = (menitSiram_2 + 1) % 60;
         else if (setMode == MODE_DUR) durasiSiram = max(1, min(120, durasiSiram + 1));
+        else if (setMode == MODE_TIME_H) setJam = (setJam + 1) % 24;
+        else if (setMode == MODE_TIME_M) setMenit = (setMenit + 1) % 60;
       }
     }
   }
@@ -471,6 +519,8 @@ void loop() {
     else if (setMode == MODE_M1) showM = (blinkOn ? menitSiram_1 : curMin);
     else if (setMode == MODE_H2) showH = (blinkOn ? jamSiram_2 : curHour);
     else if (setMode == MODE_M2) showM = (blinkOn ? menitSiram_2 : curMin);
+    else if (setMode == MODE_TIME_H) showH = (blinkOn ? setJam : curHour);
+    else if (setMode == MODE_TIME_M) showM = (blinkOn ? setMenit : curMin);
     int number = showH * 100 + showM;
     uint8_t colon = (blinkOn ? 0x40 : 0x00); //
     tm.showNumberDecEx(number, colon, true, 4, 0);
