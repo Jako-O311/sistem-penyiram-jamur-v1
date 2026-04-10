@@ -63,8 +63,36 @@ class _MyHomePageState extends State<MyHomePage> {
   final String deviceId = 'device-001';
   final String baseUrl = 'http://192.168.1.100:3000';
   int _selectedIndex = 0;
+  bool _isManual = false;
+  bool _isAuto = false;
+  String _status = 'Memuat...';
 
-  // Removed unused counter and increment function
+  @override
+  void initState() {
+    super.initState();
+    _fetchStatus();
+  }
+
+  Future<void> _fetchStatus() async {
+    final uri = Uri.parse('$baseUrl/api/devices/$deviceId/status');
+    try {
+      final resp = await http.get(uri).timeout(const Duration(seconds: 5));
+      if (!mounted) return;
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        setState(() {
+          _isManual = data['manual'] ?? false;
+          _isAuto = data['auto'] ?? false;
+          _status = 'Status: ${_isManual ? 'Manual' : _isAuto ? 'Otomatis' : 'Mati'}';
+        });
+      } else {
+        setState(() => _status = 'Gagal memuat status');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _status = 'Error: $e');
+    }
+  }
 
   Future<void> sendCommand(String command, [Map<String, dynamic>? params]) async {
     final uri = Uri.parse('$baseUrl/api/devices/$deviceId/command');
@@ -74,6 +102,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (!mounted) return;
       if (resp.statusCode == 200) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perintah terkirim')));
+        _fetchStatus(); // Update status after command
       } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: ${resp.statusCode}')));
       }
@@ -101,27 +130,34 @@ class _MyHomePageState extends State<MyHomePage> {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: GridView.count(
-          shrinkWrap: true,
-          crossAxisCount: 2,
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 16,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ElevatedButton(
-              onPressed: _toggleManual,
-              child: const Text('Siram Manual'),
-            ),
-            ElevatedButton(
-              onPressed: _toggleAuto,
-              child: const Text('Penyiram Otomatis'),
-            ),
-            ElevatedButton(
-              onPressed: _toggleScheduleCount,
-              child: const Text('1x / 2x per Jadwal'),
-            ),
-            ElevatedButton(
-              onPressed: _openScheduleEditor,
-              child: const Text('Ubah Jadwal'),
+            Text(_status, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            GridView.count(
+              shrinkWrap: true,
+              crossAxisCount: 2,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              children: [
+                ElevatedButton(
+                  onPressed: _toggleManual,
+                  child: const Text('Siram Manual'),
+                ),
+                ElevatedButton(
+                  onPressed: _toggleAuto,
+                  child: const Text('Penyiram Otomatis'),
+                ),
+                ElevatedButton(
+                  onPressed: _toggleScheduleCount,
+                  child: const Text('1x / 2x per Jadwal'),
+                ),
+                ElevatedButton(
+                  onPressed: _openScheduleEditor,
+                  child: const Text('Ubah Jadwal'),
+                ),
+              ],
             ),
           ],
         ),
@@ -146,6 +182,12 @@ class _MyHomePageState extends State<MyHomePage> {
         // Here we take the value from the MyHomePage object that was created by
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _fetchStatus,
+          ),
+        ],
       ),
       body: _selectedIndex == 0
           ? _buildHomeContent()
