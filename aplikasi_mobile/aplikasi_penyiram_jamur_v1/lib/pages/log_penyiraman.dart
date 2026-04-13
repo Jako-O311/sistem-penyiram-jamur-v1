@@ -33,7 +33,7 @@ class _log_penyiramanState extends State<log_penyiraman> {
   late List<PenyiramanLog> allLogs;
   late List<PenyiramanLog> filteredLogs;
   SortOrder sortOrder = SortOrder.descending;
-  DateTime? selectedDate;
+  DateTimeRange? selectedDateRange;
 
   @override
   void initState() {
@@ -116,12 +116,11 @@ class _log_penyiramanState extends State<log_penyiraman> {
   void _sortAndFilterLogs() {
     filteredLogs = List.from(allLogs);
 
-    // Filter berdasarkan tanggal jika dipilih
-    if (selectedDate != null) {
+    // Filter berdasarkan range tanggal jika dipilih
+    if (selectedDateRange != null) {
       filteredLogs = filteredLogs.where((log) {
-        return log.tanggal.year == selectedDate!.year &&
-            log.tanggal.month == selectedDate!.month &&
-            log.tanggal.day == selectedDate!.day;
+        return log.tanggal.isAfter(selectedDateRange!.start.subtract(const Duration(days: 1))) &&
+            log.tanggal.isBefore(selectedDateRange!.end.add(const Duration(days: 1)));
       }).toList();
     }
 
@@ -141,22 +140,25 @@ class _log_penyiramanState extends State<log_penyiraman> {
     _sortAndFilterLogs();
   }
 
-  Future<void> _selectDate(BuildContext context) async {
-    final picked = await showDatePicker(
+  Future<void> _selectDateRange(BuildContext context) async {
+    final picked = await showDateRangePicker(
       context: context,
-      initialDate: selectedDate ?? DateTime.now(),
+      initialDateRange: selectedDateRange ?? DateTimeRange(
+        start: DateTime.now().subtract(const Duration(days: 7)),
+        end: DateTime.now(),
+      ),
       firstDate: DateTime(2024),
       lastDate: DateTime.now(),
     );
 
     if (picked != null) {
-      selectedDate = picked;
+      selectedDateRange = picked;
       _sortAndFilterLogs();
     }
   }
 
   void _clearDateFilter() {
-    selectedDate = null;
+    selectedDateRange = null;
     _sortAndFilterLogs();
   }
 
@@ -200,7 +202,7 @@ class _log_penyiramanState extends State<log_penyiraman> {
                   children: [
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => _selectDate(context),
+                        onTap: () => _selectDateRange(context),
                         child: Container(
                           decoration: BoxDecoration(
                             border: Border.all(color: Colors.blue),
@@ -216,15 +218,16 @@ class _log_penyiramanState extends State<log_penyiraman> {
                               const Icon(Icons.calendar_today,
                                   size: 18, color: Colors.blue),
                               const SizedBox(width: 8),
-                              Text(
-                                selectedDate != null
-                                    ? DateFormat('dd MMM yyyy')
-                                        .format(selectedDate!)
-                                    : 'Pilih Tanggal',
-                                style: TextStyle(
-                                  color: selectedDate != null
-                                      ? Colors.black
-                                      : Colors.grey,
+                              Expanded(
+                                child: Text(
+                                  selectedDateRange != null
+                                      ? '${DateFormat('dd MMM yyyy').format(selectedDateRange!.start)} - ${DateFormat('dd MMM yyyy').format(selectedDateRange!.end)}'
+                                      : 'Pilih Rentang Tanggal',
+                                  style: TextStyle(
+                                    color: selectedDateRange != null
+                                        ? Colors.black
+                                        : Colors.grey,
+                                  ),
                                 ),
                               ),
                             ],
@@ -232,7 +235,7 @@ class _log_penyiramanState extends State<log_penyiraman> {
                         ),
                       ),
                     ),
-                    if (selectedDate != null) ...[
+                    if (selectedDateRange != null) ...[
                       const SizedBox(width: 8),
                       IconButton(
                         icon: const Icon(Icons.clear),
