@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 // Model data dari log penyiraman
 class PenyiramanLog {
   final String id;
+  final String idHardware;
   final DateTime tanggal;
   final String waktu;
   final double volume;
@@ -12,6 +13,7 @@ class PenyiramanLog {
 
   PenyiramanLog({
     required this.id,
+    required this.idHardware,
     required this.tanggal,
     required this.waktu,
     required this.volume,
@@ -23,6 +25,7 @@ class PenyiramanLog {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'idHardware': idHardware,
       'tanggal': tanggal.toIso8601String(),
       'waktu': waktu,
       'volume': volume,
@@ -35,6 +38,7 @@ class PenyiramanLog {
   factory PenyiramanLog.fromJson(Map<String, dynamic> json) {
     return PenyiramanLog(
       id: json['id'] as String,
+      idHardware: json['idHardware'] as String,
       tanggal: DateTime.parse(json['tanggal'] as String),
       waktu: json['waktu'] as String,
       volume: (json['volume'] as num).toDouble(),
@@ -46,6 +50,7 @@ class PenyiramanLog {
   // copy denganmethod untuk update beberapa field
   PenyiramanLog copyWith({
     String? id,
+    String? idHardware,
     DateTime? tanggal,
     String? waktu,
     double? volume,
@@ -54,6 +59,7 @@ class PenyiramanLog {
   }) {
     return PenyiramanLog(
       id: id ?? this.id,
+      idHardware: idHardware ?? this.idHardware,
       tanggal: tanggal ?? this.tanggal,
       waktu: waktu ?? this.waktu,
       volume: volume ?? this.volume,
@@ -79,6 +85,7 @@ class PenyiramanLogService {
 
   // CREATE - Tambah log penyiraman baru
   static Future<PenyiramanLog> createPenyiramanLog({
+    required String idHardware,
     required DateTime tanggal,
     required String waktu,
     required double volume,
@@ -93,6 +100,7 @@ class PenyiramanLogService {
           'Accept': 'application/json',
         },
         body: jsonEncode({
+          'idHardware': idHardware,
           'tanggal': tanggal.toIso8601String(),
           'waktu': waktu,
           'volume': volume,
@@ -229,9 +237,70 @@ class PenyiramanLogService {
     }
   }
 
+  // READ - Ambil log penyiraman dengan filter hardware ID
+  static Future<List<PenyiramanLog>> getPenyiramanLogsByHardwareId(String idHardware) async {
+    try {
+      final queryParams = {'idHardware': idHardware};
+
+      final uri = Uri.parse('$endpoint/filter/hardware').replace(queryParameters: queryParams);
+      final response = await http.get(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw Exception('Request timeout'),
+      );
+
+      await _handleResponse(response);
+
+      final jsonData = jsonDecode(response.body);
+      final List<dynamic> data = jsonData['data'] ?? [];
+      return data.map((item) => PenyiramanLog.fromJson(item)).toList();
+    } catch (e) {
+      throw Exception('Gagal mengambil log penyiraman: $e');
+    }
+  }
+
+  // READ - Ambil log penyiraman dengan filter kombinasi (hardware + tanggal)
+  static Future<List<PenyiramanLog>> getPenyiramanLogsByHardwareAndDate({
+    required String idHardware,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    try {
+      final queryParams = <String, String>{
+        'idHardware': idHardware,
+        if (startDate != null) 'startDate': startDate.toIso8601String(),
+        if (endDate != null) 'endDate': endDate.toIso8601String(),
+      };
+
+      final uri = Uri.parse('$endpoint/filter/hardware-date').replace(queryParameters: queryParams);
+      final response = await http.get(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw Exception('Request timeout'),
+      );
+
+      await _handleResponse(response);
+
+      final jsonData = jsonDecode(response.body);
+      final List<dynamic> data = jsonData['data'] ?? [];
+      return data.map((item) => PenyiramanLog.fromJson(item)).toList();
+    } catch (e) {
+      throw Exception('Gagal mengambil log penyiraman: $e');
+    }
+  }
+
   // UPDATE - Update log penyiraman
   static Future<PenyiramanLog> updatePenyiramanLog({
     required String id,
+    String? idHardware,
     DateTime? tanggal,
     String? waktu,
     double? volume,
@@ -240,6 +309,7 @@ class PenyiramanLogService {
   }) async {
     try {
       final body = <String, dynamic>{};
+      if (idHardware != null) body['idHardware'] = idHardware;
       if (tanggal != null) body['tanggal'] = tanggal.toIso8601String();
       if (waktu != null) body['waktu'] = waktu;
       if (volume != null) body['volume'] = volume;
@@ -365,15 +435,73 @@ class PenyiramanLogService {
     }
   }
 
-  // Utility - Export log penyiraman ke CSV
-  static Future<String> exportToCsv({
+  // Utility - Dapatkan statistik log penyiraman berdasarkan hardware
+  static Future<Map<String, dynamic>> getPenyiramanStatisticsByHardware({
+    required String idHardware,
     DateTime? startDate,
     DateTime? endDate,
   }) async {
     try {
       final queryParams = <String, String>{
+        'idHardware': idHardware,
         if (startDate != null) 'startDate': startDate.toIso8601String(),
         if (endDate != null) 'endDate': endDate.toIso8601String(),
+      };
+
+      final uri = Uri.parse('$endpoint/statistics/hardware').replace(queryParameters: queryParams);
+      final response = await http.get(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw Exception('Request timeout'),
+      );
+
+      await _handleResponse(response);
+
+      final jsonData = jsonDecode(response.body);
+      return jsonData['data'] ?? {};
+    } catch (e) {
+      throw Exception('Gagal mengambil statistik hardware: $e');
+    }
+  }
+
+  // Utility - Dapatkan daftar hardware yang aktif
+  static Future<List<String>> getActiveHardwareIds() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$endpoint/hardware/active'),
+        headers: {
+          'Accept': 'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw Exception('Request timeout'),
+      );
+
+      await _handleResponse(response);
+
+      final jsonData = jsonDecode(response.body);
+      final List<dynamic> data = jsonData['data'] ?? [];
+      return data.map((item) => item as String).toList();
+    } catch (e) {
+      throw Exception('Gagal mengambil daftar hardware aktif: $e');
+    }
+  }
+
+  // Utility - Export log penyiraman ke CSV
+  static Future<String> exportToCsv({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? idHardware,
+  }) async {
+    try {
+      final queryParams = <String, String>{
+        if (startDate != null) 'startDate': startDate.toIso8601String(),
+        if (endDate != null) 'endDate': endDate.toIso8601String(),
+        if (idHardware != null) 'idHardware': idHardware,
       };
 
       final uri = Uri.parse('$endpoint/export/csv').replace(queryParameters: queryParams);
