@@ -10,8 +10,8 @@
 #include <sys/time.h>
 
 //konfigurasi wifi
-const char* ssid     = "MBAK ARTHA 4G";
-const char* password = "sobatartha";
+const char* ssid     = "ssid";
+const char* password = "pass";
 //konfigurasi ntp - waktu indonesia WIB
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 7 * 3600;
